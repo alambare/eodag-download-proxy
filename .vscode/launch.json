@@ -1,0 +1,70 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug server",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=eodag-download-proxy"
+                ],
+                "filter": {
+                    "name": "eodag-download-proxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug",
+                "RUST_BACKTRACE": "1"
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug server (S3 mock)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=eodag-download-proxy"
+                ],
+                "filter": {
+                    "name": "eodag-download-proxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug",
+                "RUST_BACKTRACE": "1",
+                "EODAG_DL__MOCK_MODE": "s3",
+                "EODAG_DL__"
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run"
+                ],
+                "filter": {
+                    "name": "integration",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug",
+                "RUST_BACKTRACE": "1"
+            }
+        }
+    ]
+}

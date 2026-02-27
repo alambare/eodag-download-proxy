@@ -1,0 +1,45 @@
+[package]
+name = "eodag-download-proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tower = "0.5"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Configuration
+config = "0.15"
+toml = "0.8"
+
+# S3 / Object storage
+object_store = { version = "0.12", features = ["aws"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["stream", "json"] }
+
+# Client pool
+moka = { version = "0.12", features = ["future"] }
+
+# Utilities
+futures = "0.3"
+bytes = "1"
+thiserror = "2"
+async-trait = "0.1"
+url = "2"
+mime_guess = "2"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio-test = "0.4"
+http-body-util = "0.1"

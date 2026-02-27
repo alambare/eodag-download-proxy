@@ -1,0 +1,42 @@
+# eodag-download-proxy configuration
+#
+# Values can be overridden by environment variables prefixed with EODAG_DL_.
+# Nested keys use double underscore: EODAG_DL_CACHE__BUCKET=my-bucket
+
+# Address the server listens on.
+listen_addr = "0.0.0.0:8080"
+
+# Base URL of the EODAG resolution endpoint.
+eodag_url = "http://localhost:5000"
+
+# ── Optional: S3 cache ──────────────────────────────────────────────────
+# Uncomment and fill in to enable the S3 cache layer.
+#
+# [cache]
+# bucket = ""
+# endpoint = ""
+# region = ""
+# access_key = ""
+# secret_key = ""
+# presign_prefixes = []                                                                          # prefixes for which presigned URLs are returned
+
+# ── Optional: Authentication (OIDC) ─────────────────────────────────────
+# [auth]
+# issuer_url = "https://auth.example.com/realms/myrealm"
+# audience = "eodag-download-proxy"
+
+# ── Optional: Authorization (OPA) ───────────────────────────────────────
+# [opa]
+# url = "http://localhost:8181/v1/data/authz/allow"
+
+# ── Client pool tuning ──────────────────────────────────────────────────
+[pool]
+s3_pool_ttl_secs = 900           # 15 minutes
+s3_pool_max_capacity = 100
+http_pool_idle_timeout_secs = 90
+
+# ── Mock mode (dev only) ────────────────────────────────────────────────
+# Which mock EODAG response to use: "http" or "s3"
+#   http → simulates an HTTP backend (httpbin random bytes)
+#   s3   → simulates a public S3 bucket (sentinel-cogs, anonymous)
+mock_mode = "s3"
