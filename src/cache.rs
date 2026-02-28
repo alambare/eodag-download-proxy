@@ -4,23 +4,24 @@ use crate::config::AppConfig;
 use crate::error::AppError;
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::stream::BoxStream;
+use futures::stream::{BoxStream, Stream};
 use std::sync::Arc;
 
 // Cache store wrapping a backend source.
 pub struct S3CacheStore {
-    inner: Arc<dyn ByteStreamSource>,
+    inner: S3BackendSource,
 }
 
 #[async_trait]
 impl ByteStreamSource for S3CacheStore {
-    async fn exists(&self, key: &str) -> Result<bool, AppError> {
-        self.inner.exists(key).await
+    async fn exists(&self, key: Option<&str>) -> Result<bool, AppError> {
+        let key = key.ok_or_else(|| AppError::Internal("Cache key required".to_string()))?;
+        self.inner.exists(Some(key)).await
     }
 
     async fn stream(
         &self,
-        key: &str,
+        key: Option<&str>,
     ) -> Result<
         (
             BoxStream<'static, Result<Bytes, AppError>>,
@@ -29,7 +30,8 @@ impl ByteStreamSource for S3CacheStore {
         ),
         AppError,
     > {
-        self.inner.stream(key).await
+        let key = key.ok_or_else(|| AppError::Internal("Cache key required".to_string()))?;
+        self.inner.stream(Some(key)).await
     }
 }
 
@@ -40,7 +42,7 @@ impl S3CacheStore {
     pub fn build_from_config(
         config: &AppConfig,
         s3_pool: Arc<crate::client_pool::S3ClientPool>,
-    ) -> Option<Arc<dyn ByteStreamSource>> {
+    ) -> Option<Arc<S3CacheStore>> {
         let cache_cfg = match config.cache.as_ref() {
             Some(cfg) => cfg,
             None => {
@@ -69,6 +71,7 @@ impl S3CacheStore {
         let s3_backend = S3BackendSource::new(
             &cache_cfg.endpoint,
             &cache_cfg.bucket,
+            None,
             Some(access_key),
             Some(secret_key),
             None,
@@ -78,7 +81,14 @@ impl S3CacheStore {
         );
 
         Some(Arc::new(S3CacheStore {
-            inner: Arc::new(s3_backend),
-        }) as Arc<dyn ByteStreamSource>)
+            inner: s3_backend,
+        }))
+    }
+
+    pub async fn put_streaming<S>(&self, key: &str, stream: S, content_length: Option<u64>) -> Result<(), AppError>
+    where
+        S: Stream<Item = Result<Bytes, AppError>> + Send + 'static,
+    {
+        self.inner.put_streaming(key, stream, content_length).await
     }
 }

@@ -1,4 +1,4 @@
-use crate::backend::ByteStreamSource;
+use crate::cache::S3CacheStore;
 use crate::client_pool::S3ClientPool;
 use crate::config::AppConfig;
 use crate::eodag::EodagClient;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub struct AppState {
     pub config: AppConfig,
     pub http_client: reqwest::Client,
-    pub cache_store: Option<Arc<dyn ByteStreamSource>>,
+    pub cache_store: Option<Arc<S3CacheStore>>,
     pub s3_pool: Arc<S3ClientPool>,
-    pub eodag_client: Arc<dyn EodagClient>,
+    pub eodag_client: Arc<dyn EodagClient + Send + Sync>,
 }

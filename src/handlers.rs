@@ -7,7 +7,11 @@ use axum::extract::State;
 use axum::http::Response;
 use bytes::Bytes;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use std::sync::Arc;
+use crate::backend::s3::S3BackendSource;
+use crate::backend::http::HTTPBackendSource;
+use async_stream::stream;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct DataPathParams {
@@ -43,19 +47,23 @@ pub async fn handle_data_no_subpath(
 }
 
 /// Main request handler
+/// Main request handler
 async fn handle_request(
     state: AppState,
     params: &DataPathParams,
 ) -> Result<Response<Body>, AppError> {
     let cache_key = build_cache_key(params, params.subpath.as_deref());
 
+    // First, check cache
     if let Some(cache) = &state.cache_store {
-        if cache.exists(&cache_key).await? {
-            let (stream, ct, cl) = cache.stream(&cache_key).await?;
-            return Ok(build_response(stream, ct, cl));
+        if cache.exists(Some(&cache_key)).await? {
+            tracing::debug!(cache_key = %cache_key, "cache hit");
+            let (stream, content_type, content_length) = cache.stream(Some(&cache_key)).await?;
+            return Ok(build_response(stream, content_type, content_length));
         }
     }
 
+    // Cache miss: resolve backend via EODAG
     let req = EodagResolveRequest {
         provider: params.provider.clone(),
         collection_id: params.collection_id.clone(),
@@ -64,35 +72,47 @@ async fn handle_request(
     };
 
     let eodag_response = state.eodag_client.resolve(&req).await?;
+    tracing::info!(eodag_response = ?eodag_response, "EODAG resolution successful");
 
-    let upstream_path = if let Some(subpath) = &params.subpath {
-        format!(
-            "{}/{}",
-            eodag_response.get_path(),
-            subpath.trim_start_matches('/')
-        )
+
+    let backend_source = create_backend_source(&eodag_response, &state).await?;
+
+    // Stream from backend
+    let (backend_stream, content_type, content_length) = backend_source
+        .stream(params.subpath.as_deref())
+        .await?;
+
+    // If cache enabled, stream to client and write-through cache
+    let stream_for_client: BoxStream<Result<Bytes, AppError>> = if let Some(cache) = &state.cache_store {
+        let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(4); // small buffer for backpressure
+        let cache_clone = cache.clone();
+        let cache_key_clone = cache_key.clone();
+
+        // Spawn task to write to S3 cache
+        tokio::spawn(async move {
+            let mut rx = rx; // ensure mutable
+
+            let s: BoxStream<Result<Bytes, AppError>> = stream! {
+                while let Some(chunk) = rx.recv().await {
+                    yield Ok(chunk);
+                }
+            }.boxed();
+            if let Err(e) = cache_clone.put_streaming(&cache_key_clone, s, content_length).await {
+                tracing::warn!(error = ?e, "cache write failed");
+            }
+        });
+
+        // Forward backend chunks to client and push to cache channel
+        backend_stream.inspect(move |res| {
+            if let Ok(chunk) = res {
+                let _ = tx.try_send(chunk.clone()); // drop if buffer full
+            }
+        }).boxed()
     } else {
-        eodag_response.get_path().to_string()
+        backend_stream
     };
 
-    let backend_source: Arc<dyn ByteStreamSource> = match &eodag_response {
-        EodagResponse::S3 { .. } => Arc::new(
-            crate::backend::s3::S3BackendSource::from_eodag_response(
-                state.s3_pool.clone(),
-                &eodag_response,
-            )
-            .await?,
-        ),
-        EodagResponse::Http { .. } => Arc::new(
-            crate::backend::http::HTTPBackendSource::from_eodag_response(
-                &state.http_client,
-                &eodag_response,
-            )?,
-        ),
-    };
-
-    let (stream, content_type, content_length) = backend_source.stream(&upstream_path).await?;
-    Ok(build_response(stream, content_type, content_length))
+    Ok(build_response(stream_for_client, content_type, content_length))
 }
 
 /// Build cache key based on data path + optional subpath
@@ -106,6 +126,29 @@ fn build_cache_key(params: &DataPathParams, subpath: Option<&str>) -> String {
         key.push_str(sp);
     }
     key
+}
+
+async fn create_backend_source(
+    eodag_response: &EodagResponse,
+    state: &AppState,
+) -> Result<Arc<dyn ByteStreamSource + Send + Sync>, AppError> {
+    match eodag_response {
+        EodagResponse::S3 { .. } => {
+            let s3_backend = S3BackendSource::from_eodag_response(
+                state.s3_pool.clone(),
+                eodag_response,
+            )
+            .await?;
+            Ok(Arc::from(Box::new(s3_backend) as Box<dyn ByteStreamSource + Send + Sync>))
+        }
+        EodagResponse::Http { .. } => {
+            let http_backend = HTTPBackendSource::from_eodag_response(
+                &state.http_client,
+                eodag_response,
+            )?;
+            Ok(Arc::from(Box::new(http_backend) as Box<dyn ByteStreamSource + Send + Sync>))
+        }
+    }
 }
 
 /// Build HTTP response with streamed body and optional headers

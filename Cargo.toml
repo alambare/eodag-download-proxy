@@ -20,13 +20,15 @@ serde_json = "1"
 
 # Configuration
 config = "0.15"
-toml = "0.8"
+toml = "1"
 
 # S3 / Object storage
-object_store = { version = "0.12", features = ["aws"] }
+object_store = { version = "0.13", features = ["aws"] }
+tokio-stream = { version = "0.1" }
+async-stream = { version = "0.3" }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["stream", "json"] }
+reqwest = { version = "0.13", features = ["stream", "json"] }
 
 # Client pool
 moka = { version = "0.12", features = ["future"] }

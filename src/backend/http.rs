@@ -6,11 +6,10 @@ use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt};
 use reqwest::Client;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// HTTP backend source for streaming arbitrary files over HTTP/HTTPS.
 pub struct HTTPBackendSource {
-    client: Arc<Client>,
+    client: Client,
     base_url: String,
     headers: HashMap<String, String>,
 }
@@ -23,7 +22,7 @@ impl HTTPBackendSource {
     ) -> Result<Self, AppError> {
         match response {
             EodagResponse::Http { path, headers } => Ok(Self {
-                client: Arc::new(client.clone()),
+                client: client.clone(),
                 base_url: path.clone(),
                 headers: headers.clone(),
             }),
@@ -32,16 +31,24 @@ impl HTTPBackendSource {
             )),
         }
     }
+
+    fn get_url(&self, subpath: Option<&str>) -> String {
+        match subpath {
+            Some(sp) if !sp.is_empty() => format!(
+                "{}/{}",
+                self.base_url.trim_end_matches('/'),
+                sp.trim_start_matches('/')
+            ),
+            _ => self.base_url.clone(),
+        }
+    }
 }
 
 #[async_trait]
 impl ByteStreamSource for HTTPBackendSource {
-    async fn exists(&self, subpath: &str) -> Result<bool, AppError> {
-        let url = format!(
-            "{}/{}",
-            self.base_url.trim_end_matches('/'),
-            subpath.trim_start_matches('/')
-        );
+    async fn exists(&self, subpath: Option<&str>) -> Result<bool, AppError> {
+        let url = self.get_url(subpath);
+
         use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
         let mut header_map = HeaderMap::new();
         for (k, v) in &self.headers {
@@ -65,7 +72,7 @@ impl ByteStreamSource for HTTPBackendSource {
 
     async fn stream(
         &self,
-        path: &str,
+        subpath: Option<&str>,
     ) -> Result<
         (
             BoxStream<'static, Result<Bytes, AppError>>,
@@ -74,26 +81,18 @@ impl ByteStreamSource for HTTPBackendSource {
         ),
         AppError,
     > {
-        let url = match path {
-            sp if !sp.is_empty() => format!(
-                "{}/{}",
-                self.base_url.trim_end_matches('/'),
-                sp.trim_start_matches('/')
-            ),
-            _ => self.base_url.clone(),
-        };
+        let url = self.get_url(subpath);
 
         tracing::info!(backend = "http", url = %url, "streaming from HTTP backend");
 
-        let mut req = self.client.get(&url);
-        for (k, v) in &self.headers {
-            req = req.header(k, v);
-        }
-
-        let upstream = req
-            .send()
-            .await
-            .map_err(|e| AppError::BackendError(format!("HTTP request failed: {e}")))?;
+  
+        let upstream = self.headers.iter().fold(
+            self.client.get(&url),
+            |req, (k, v)| req.header(k, v),
+        )
+        .send()
+        .await
+        .map_err(|e| AppError::BackendError(format!("HTTP request failed: {e}")))?;
 
         if !upstream.status().is_success() {
             let status = upstream.status();
