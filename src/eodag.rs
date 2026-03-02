@@ -115,6 +115,27 @@ impl MockEodagClient {
                 Self {
                     response: EodagResponse::S3 {
                         endpoint_url: "https://eodata.cloudferro.com".to_string(),
+                        
+                        // s3://eodata/ auxdata/CopDEM/COP-DEM_GLO-30-DGED                     /   DEM1_SAR_DGE_30_20101212T040432_20130429T040610_ADS_000000_wfpc                                              .DEM         /Copernicus_DSM_10_S04_00_E023_00/DEM/Copernicus_DSM_10_S04_00_E023_00_DEM.tif
+                        // s3://eodata/ Sentinel-5P  /   TROPOMI /  L1B_RA_BD4  / 2018/04/30   /   S5P _ RPRO_L1B_RA_BD4 _   20180430T020120 _ 20180430T034250 _ 02819_03_020100_20220630T164531.nc
+                        // s3://eodata/ Sentinel-3   /   SYNERGY /  SY_2_SYN___ / 2018/10/07   /   S3A _ SY_2_SYN___     _   20181007T053450 _ 20181007T053552 _ 20181010T060805_0061_036_290_4320_LN2_O_NT_002 .SEN3        /Syn_Oa07_reflectance.nc
+                        // s3://eodata/ Sentinel-3   /   OLCI    /  OL_2_WRR___ / 2016/04/25   /   S3A _ OL_2_WRR___     _   20160425T114036 _ 20160425T114236 _ 20210510T133650_0119_003_237______MAR_R_NT_003 .SEN3        /Oa03_reflectance.nc
+                        // s3://eodata/ Sentinel-3   /   OLCI    /  OL_1_ERR___ / 2016/04/06   /   S3A _ OL_1_ERR___     _   20160406T080551 _ 20160406T084949 _ 20241003T130601_2638_002_349______MAR_R_NT_004 .SEN3        /Oa02_radiance.nc
+                        // s3://eodata/ Sentinel-3   /   SRAL    /  SR_2_LAN    / 2016/03/01   /   S3A _ SR_2_LAN___     _   20160301T143301 _ 20160301T152330 _ 20180518T211020_3029_001_224______LR1_R_NT_003 .SEN3        /enhanced_measurement.nc
+                        // s3://eodata/ Sentinel-1   /   SAR     /  GRD         / 2014/10/03   /   S1A _ IW_GRDH_1SDV    _   20141003T165234 _ 20141003T165259 _ 002668_002F8B_4584.SAFE                                     /measurement/s1a-iw-grd-vv-20141003t165234-20141003t165259-002668-002f8b-001.tiff
+                        // s3://eodata/ Sentinel-2   /   MSI     /  L2A_N0500   / 2015/07/04   /   S2A _ MSIL2A          _   20150704T101006 _ N0500_R022_T32TMN_20231012T100650                                .SAFE        /GRANULE/L2A_T32TMN _ A000162 _ 20150704T101337 /IMG_DATA/R10m/T32TMN_20150704T101006_AOT_10m.jp2
+
+
+                        // For all the format /data / provider / collection / item / asset_name works but for  S1 and S2
+                        // For S1: we need a template per asset because the asset are in a subpath. That should be the generic behavior probably anyway
+                        // For S2: the problem is the granule is in the path and specific to the item and we cannot infer it from the item id or the asset name. Because of the absolute orbit present only in the granule...
+                        // The solution would be to:
+                        // 1. EODAG returns a list of templates (1 per asset)
+                        // 2. we accept additional query parameters in the /data request to fill the template (e.g. granule name)
+
+
+                        // => from watching EODAG it looks complicated to be able to export a download URL template. We will need to request EODAG for the URLs before finding the right solution.
+                        //
                         path: "s3://eodata/Sentinel-2/MSI/L2A_N0500/2015/07/04/S2A_MSIL2A_20150704T101006_N0500_R022_T32TMN_20231012T100650.SAFE/GRANULE/L2A_T32TMN_A000162_20150704T101337/IMG_DATA/R10m/T32TMN_20150704T101006_AOT_10m.jp2".to_string(),
                         key: Some("xxx".to_string()),
                         secret: Some("xxx".to_string()),
