@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from typing import Annotated
 
 from eodag import EODataAccessGateway, setup_logging
@@ -39,7 +40,8 @@ EodagResponse = Annotated[S3Response | HttpResponse, Field(discriminator=None)]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """EODAG control plane lifespan context manager."""
-    setup_logging(2)  # INFO level
+    log_level = int(os.environ.get("EODAG_LOG_LEVEL", "2"))
+    setup_logging(log_level)
     app.state.dag = EODataAccessGateway()
     yield
 

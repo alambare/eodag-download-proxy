@@ -1,0 +1,29 @@
+services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: eodag-control-plane/Dockerfile
+    restart: unless-stopped
+    volumes:
+      # Mount EODAG user config (provider credentials etc.)
+      - ${EODAG_CFG_FILE:-~/.config/eodag/eodag.yml}:/app/.config/eodag/eodag.yml:ro
+    environment:
+      EODAG_CFG_FILE: /app/.config/eodag/eodag.yml
+      EODAG_LOG_LEVEL: "3"
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8880:8880"
+    environment:
+      # Point the Rust proxy at the control plane service
+      EODAG_DP__EODAG_URL: http://control-plane:8000
+      # Override other settings via env vars as needed:
+      EODAG_DP__LISTEN_ADDR: 0.0.0.0:8880
+      # EODAG_DP__CACHE__BUCKET: my-cache-bucket
+      # EODAG_DP__CACHE__ENDPOINT: https://s3.amazonaws.com
+    depends_on:
+      - control-plane
