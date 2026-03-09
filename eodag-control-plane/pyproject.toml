@@ -1,0 +1,24 @@
+[project]
+name = "eodag-control-plane"
+version = "0.1.0"
+description = "EODAG asset resolution control plane for eodag-data-proxy"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "eodag[all-providers]==4.0.0b1",
+    "eodag-cube" # required while we did not move EOProduct._get_storage_options() to eodag itself
+]
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

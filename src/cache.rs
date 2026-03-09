@@ -179,12 +179,6 @@ impl S3CacheStore {
             }
         };
 
-        tracing::info!(
-            "initializing S3 cache: endpoint={} bucket={}",
-            cache_cfg.endpoint,
-            cache_cfg.bucket
-        );
-
         let s3_pool = Arc::new(S3ClientPool::new(
             Duration::from_secs(config.pool.s3_pool_ttl_secs),
             1, // cache talks to a single endpoint/bucket

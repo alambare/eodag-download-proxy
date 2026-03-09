@@ -146,7 +146,7 @@ impl AppConfig {
         let builder = config::Config::builder()
             .add_source(config::File::with_name("config").required(false))
             .add_source(
-                config::Environment::with_prefix("EODAG_DL")
+                config::Environment::with_prefix("EODAG_DP")
                     .separator("__")
                     .try_parsing(true),
             );

@@ -24,6 +24,7 @@ pub struct HttpEodagClient {
 
 impl HttpEodagClient {
     pub fn new(base_url: String, http: reqwest::Client) -> Self {
+        tracing::info!(eodag_url = %base_url, "EODAG control plane initialized");
         Self { base_url, http }
     }
 }
@@ -31,14 +32,17 @@ impl HttpEodagClient {
 #[async_trait]
 impl EodagClient for HttpEodagClient {
     async fn resolve(&self, request: &EodagResolveRequest) -> Result<EodagResponse, AppError> {
-        let url = format!(
-            "{}/resolve/{}/{}/{}/{}",
+        let mut url = url::Url::parse(&format!(
+            "{}/resolve/eodag",
             self.base_url.trim_end_matches('/'),
-            request.provider,
-            request.collection_id,
-            request.item_id,
-            request.asset_key,
-        );
+        ))
+        .map_err(|e| AppError::EodagError(format!("invalid EODAG base URL: {e}")))?;
+
+        url.query_pairs_mut()
+            .append_pair("provider", &request.provider)
+            .append_pair("collection_id", &request.collection_id)
+            .append_pair("item_id", &request.item_id)
+            .append_pair("asset_key", &request.asset_key);
 
         tracing::debug!(
             eodag_url = %url,
@@ -51,7 +55,7 @@ impl EodagClient for HttpEodagClient {
 
         let resp = self
             .http
-            .get(&url)
+            .get(url)
             .send()
             .await
             .map_err(|e| AppError::EodagError(format!("request failed: {e}")))?;

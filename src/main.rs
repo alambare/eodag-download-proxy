@@ -24,9 +24,9 @@ async fn main() {
         config.pool.s3_pool_max_capacity,
     ));
 
-    // ── EODAG client (mock for now) ─────────────────────────────────────
-    let eodag_client: Arc<dyn EodagClient + Send + Sync> =
-        Arc::new(MockEodagClient::from_mode(&config.mock_mode));
+    let eodag_client: Arc<dyn EodagClient + Send + Sync> = Arc::new(
+        HttpEodagClient::new(config.eodag_url.clone(), http_client.clone()),
+    );
 
     let cache_store = cache::build_from_config(&config)
         .await

@@ -1,5 +1,11 @@
+# rust
 /target
-.env
 *.swp
 *.swo
+
+# python
+__pycache__
+
+# environment
+.env
 .vscode
