@@ -1,10 +1,10 @@
-use eodag_download_proxy::eodag::EodagClient;
-use eodag_download_proxy::cache;
-use eodag_download_proxy::backend::s3::S3ClientPool;
-use eodag_download_proxy::config::AppConfig;
-use eodag_download_proxy::eodag::MockEodagClient;
-use eodag_download_proxy::state::AppState;
-use eodag_download_proxy::{logging, router};
+use eodag_data_proxy::eodag::EodagClient;
+use eodag_data_proxy::cache;
+use eodag_data_proxy::backend::s3::S3ClientPool;
+use eodag_data_proxy::config::AppConfig;
+use eodag_data_proxy::eodag::HttpEodagClient;
+use eodag_data_proxy::state::AppState;
+use eodag_data_proxy::{logging, router};
 use std::sync::Arc;
 use std::time::Duration;
 

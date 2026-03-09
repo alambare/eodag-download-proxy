@@ -8,7 +8,7 @@ use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use eodag_download_proxy::cache::CacheStore;
+use eodag_data_proxy::cache::CacheStore;
 use futures::stream::BoxStream;
 
 /// No-op cache mock – always reports a miss and discards writes.
@@ -16,7 +16,7 @@ struct MockCacheStore;
 
 #[async_trait::async_trait]
 impl CacheStore for MockCacheStore {
-    async fn exists(&self, _key: &str) -> Result<bool, eodag_download_proxy::error::AppError> {
+    async fn exists(&self, _key: &str) -> Result<bool, eodag_data_proxy::error::AppError> {
         Ok(false)
     }
 
@@ -25,13 +25,13 @@ impl CacheStore for MockCacheStore {
         _key: &str,
     ) -> Result<
         (
-            BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+            BoxStream<'static, Result<Bytes, eodag_data_proxy::error::AppError>>,
             Option<String>,
             Option<u64>,
         ),
-        eodag_download_proxy::error::AppError,
+        eodag_data_proxy::error::AppError,
     > {
-        Err(eodag_download_proxy::error::AppError::Internal(
+        Err(eodag_data_proxy::error::AppError::Internal(
             "MockCacheStore has no data".to_string(),
         ))
     }
@@ -39,17 +39,17 @@ impl CacheStore for MockCacheStore {
     async fn upload(
         &self,
         _key: &str,
-        _stream: BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+        _stream: BoxStream<'static, Result<Bytes, eodag_data_proxy::error::AppError>>,
         _content_length: Option<u64>,
-    ) -> Result<(), eodag_download_proxy::error::AppError> {
+    ) -> Result<(), eodag_data_proxy::error::AppError> {
         Ok(())
     }
 }
-use eodag_download_proxy::backend::s3::S3ClientPool;
-use eodag_download_proxy::config::{AppConfig, PoolConfig};
-use eodag_download_proxy::eodag::{EodagClient, MockEodagClient};
-use eodag_download_proxy::models::EodagResponse;
-use eodag_download_proxy::state::AppState;
+use eodag_data_proxy::backend::s3::S3ClientPool;
+use eodag_data_proxy::config::{AppConfig, PoolConfig};
+use eodag_data_proxy::eodag::{EodagClient, MockEodagClient};
+use eodag_data_proxy::models::EodagResponse;
+use eodag_data_proxy::state::AppState;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ async fn test_http_backend_happy_path() {
 
     // 3. Build the app and make a request.
     let state = build_state(eodag, Some(Arc::new(MockCacheStore)));
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/test_provider/test_collection/item1/B04.tif").await;
 
@@ -170,7 +170,7 @@ async fn test_http_backend_with_subpath() {
     let eodag: Arc<dyn EodagClient> = Arc::new(MockEodagClient::new(eodag_response));
 
     let state = build_state(eodag, Some(Arc::new(MockCacheStore)));
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(
         app,
@@ -201,7 +201,7 @@ async fn test_http_backend_upstream_error() {
     let eodag: Arc<dyn EodagClient> = Arc::new(MockEodagClient::new(eodag_response));
 
     let state = build_state(eodag, Some(Arc::new(MockCacheStore)));
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/prov/col/item/asset").await;
     assert_eq!(resp.status(), 502);
@@ -235,7 +235,7 @@ async fn test_http_backend_with_headers() {
     let eodag: Arc<dyn EodagClient> = Arc::new(MockEodagClient::new(eodag_response));
 
     let state = build_state(eodag, Some(Arc::new(MockCacheStore)));
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/prov/col/item/asset").await;
     assert_eq!(resp.status(), 200);
@@ -262,7 +262,7 @@ async fn test_no_cache_configured() {
 
     // No cache at all.
     let state = build_state(eodag, None);
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/prov/col/item/asset").await;
     assert_eq!(resp.status(), 200);
@@ -274,7 +274,7 @@ async fn test_bad_route_returns_404() {
     let eodag: Arc<dyn EodagClient> = Arc::new(MockEodagClient::http_mock("http://unused"));
 
     let state = build_state(eodag, None);
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/only_two_segments").await;
     assert_eq!(resp.status(), 404);
@@ -291,7 +291,7 @@ async fn test_cache_hit() {
 
     #[async_trait]
     impl CacheStore for HitCache {
-        async fn exists(&self, _key: &str) -> Result<bool, eodag_download_proxy::error::AppError> {
+        async fn exists(&self, _key: &str) -> Result<bool, eodag_data_proxy::error::AppError> {
             Ok(true)
         }
 
@@ -300,11 +300,11 @@ async fn test_cache_hit() {
             _key: &str,
         ) -> Result<
             (
-                BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+                BoxStream<'static, Result<Bytes, eodag_data_proxy::error::AppError>>,
                 Option<String>,
                 Option<u64>,
             ),
-            eodag_download_proxy::error::AppError,
+            eodag_data_proxy::error::AppError,
         > {
             let data = Bytes::from_static(b"cached-data");
             let stream = futures::stream::once(async { Ok(data) });
@@ -318,9 +318,9 @@ async fn test_cache_hit() {
         async fn upload(
             &self,
             _key: &str,
-            _stream: BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+            _stream: BoxStream<'static, Result<Bytes, eodag_data_proxy::error::AppError>>,
             _content_length: Option<u64>,
-        ) -> Result<(), eodag_download_proxy::error::AppError> {
+        ) -> Result<(), eodag_data_proxy::error::AppError> {
             Ok(())
         }
     }
@@ -332,8 +332,8 @@ async fn test_cache_hit() {
     impl EodagClient for PanicEodag {
         async fn resolve(
             &self,
-            _req: &eodag_download_proxy::models::EodagResolveRequest,
-        ) -> Result<EodagResponse, eodag_download_proxy::error::AppError> {
+            _req: &eodag_data_proxy::models::EodagResolveRequest,
+        ) -> Result<EodagResponse, eodag_data_proxy::error::AppError> {
             panic!("EODAG should not be called on cache hit");
         }
     }
@@ -342,7 +342,7 @@ async fn test_cache_hit() {
     let cache: Arc<dyn CacheStore> = Arc::new(HitCache);
 
     let state = build_state(eodag, Some(cache));
-    let app = eodag_download_proxy::router::build(state);
+    let app = eodag_data_proxy::router::build(state);
 
     let resp = get(app, "/data/prov/col/item/asset.tif").await;
     assert_eq!(resp.status(), 200);

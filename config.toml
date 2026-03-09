@@ -1,4 +1,4 @@
-# eodag-download-proxy configuration
+# eodag-data-proxy configuration
 #
 # Values can be overridden by environment variables prefixed with EODAG_DL_.
 # Nested keys use double underscore: EODAG_DL_CACHE__BUCKET=my-bucket
@@ -24,7 +24,7 @@ eodag_url = "http://localhost:5000"
 # ── Optional: Authentication (OIDC) ─────────────────────────────────────
 # [auth]
 # issuer_url = "https://auth.example.com/realms/myrealm"
-# audience = "eodag-download-proxy"
+# audience = "eodag-data-proxy"
 
 # ── Optional: Authorization (OPA) ───────────────────────────────────────
 # [opa]
