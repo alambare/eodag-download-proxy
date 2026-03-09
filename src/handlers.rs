@@ -1,4 +1,5 @@
 use crate::backend::ByteStreamSource;
+use crate::cache::CacheStore;
 use crate::error::AppError;
 use crate::models::{EodagResolveRequest, EodagResponse};
 use crate::state::AppState;
@@ -47,18 +48,21 @@ pub async fn handle_data_no_subpath(
 }
 
 /// Main request handler
-/// Main request handler
 async fn handle_request(
     state: AppState,
     params: &DataPathParams,
 ) -> Result<Response<Body>, AppError> {
-    let cache_key = build_cache_key(params, params.subpath.as_deref());
+    // Resolve cache store for this request (None when disabled or path not matched).
+    let resource_path = build_resource_path(params, params.subpath.as_deref());
+    let cache = crate::cache::resolve_for_path(
+        &state.cache_store,
+        state.config.cache.as_ref(),
+        &resource_path,
+    );
 
-    // First, check cache
-    if let Some(cache) = &state.cache_store {
-        if cache.exists(Some(&cache_key)).await? {
-            tracing::debug!(cache_key = %cache_key, "cache hit");
-            let (stream, content_type, content_length) = cache.stream(Some(&cache_key)).await?;
+    // Check cache
+    if let Some(c) = &cache {
+        if let Some((stream, content_type, content_length)) = c.try_get(&resource_path).await {
             return Ok(build_response(stream, content_type, content_length));
         }
     }
@@ -72,8 +76,7 @@ async fn handle_request(
     };
 
     let eodag_response = state.eodag_client.resolve(&req).await?;
-    tracing::info!(eodag_response = ?eodag_response, "EODAG resolution successful");
-
+    tracing::info!(eodag_response = %eodag_response.log_summary(), "EODAG resolution successful");
 
     let backend_source = create_backend_source(&eodag_response, &state).await?;
 
@@ -82,50 +85,57 @@ async fn handle_request(
         .stream(params.subpath.as_deref())
         .await?;
 
-    // If cache enabled, stream to client and write-through cache
-    let stream_for_client: BoxStream<Result<Bytes, AppError>> = if let Some(cache) = &state.cache_store {
-        let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(4); // small buffer for backpressure
-        let cache_clone = cache.clone();
-        let cache_key_clone = cache_key.clone();
-
-        // Spawn task to write to S3 cache
-        tokio::spawn(async move {
-            let mut rx = rx; // ensure mutable
-
-            let s: BoxStream<Result<Bytes, AppError>> = stream! {
-                while let Some(chunk) = rx.recv().await {
-                    yield Ok(chunk);
-                }
-            }.boxed();
-            if let Err(e) = cache_clone.put_streaming(&cache_key_clone, s, content_length).await {
-                tracing::warn!(error = ?e, "cache write failed");
-            }
-        });
-
-        // Forward backend chunks to client and push to cache channel
-        backend_stream.inspect(move |res| {
-            if let Ok(chunk) = res {
-                let _ = tx.try_send(chunk.clone()); // drop if buffer full
-            }
-        }).boxed()
-    } else {
-        backend_stream
+    // If cache is active for this path, write-through while streaming to client
+    let stream_for_client: BoxStream<Result<Bytes, AppError>> = match cache {
+        Some(c) => write_through_stream(c, resource_path, backend_stream, content_length),
+        None => backend_stream,
     };
 
     Ok(build_response(stream_for_client, content_type, content_length))
 }
 
-/// Build cache key based on data path + optional subpath
-fn build_cache_key(params: &DataPathParams, subpath: Option<&str>) -> String {
-    let mut key = format!(
-        "{}/{}/{}/{}",
+/// Wrap the backend stream so each chunk is also forwarded to the cache.
+fn write_through_stream(
+    cache: Arc<dyn CacheStore>,
+    cache_key: String,
+    backend_stream: BoxStream<'static, Result<Bytes, AppError>>,
+    content_length: Option<u64>,
+) -> BoxStream<'static, Result<Bytes, AppError>> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(4);
+
+    tokio::spawn(async move {
+        let mut rx = rx;
+        let s: BoxStream<Result<Bytes, AppError>> = stream! {
+            while let Some(chunk) = rx.recv().await {
+                yield Ok(chunk);
+            }
+        }
+        .boxed();
+        if let Err(e) = cache.upload(&cache_key, s, content_length).await {
+            tracing::warn!(error = ?e, "cache write failed");
+        }
+    });
+
+    backend_stream
+        .inspect(move |res| {
+            if let Ok(chunk) = res {
+                let _ = tx.try_send(chunk.clone());
+            }
+        })
+        .boxed()
+}
+
+/// Build the resource path used for cache keys and EODAG resolution (e.g. `/sentinel-2/collection/item/asset[/subpath]`).
+fn build_resource_path(params: &DataPathParams, subpath: Option<&str>) -> String {
+    let mut path = format!(
+        "/{}/{}/{}/{}",
         params.provider, params.collection_id, params.item_id, params.asset_key
     );
     if let Some(sp) = subpath {
-        key.push('/');
-        key.push_str(sp);
+        path.push('/');
+        path.push_str(sp);
     }
-    key
+    path
 }
 
 async fn create_backend_source(
@@ -168,3 +178,5 @@ fn build_response(
     }
     builder.body(Body::from_stream(body_stream)).unwrap()
 }
+
+

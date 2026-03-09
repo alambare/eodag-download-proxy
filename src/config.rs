@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde::Deserializer;
 
 /// Top-level application configuration.
 ///
@@ -55,8 +56,15 @@ pub struct CacheConfig {
 
     /// Path prefixes for which we generate pre-signed URLs instead of
     /// streaming through the server.  Empty means always stream.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_comma_separated")]
     pub presign_prefixes: Vec<String>,
+
+    /// Request path prefixes that are allowed to use cache.
+    ///
+    /// Example: ["/data/sentinel-2/", "/data/landsat/"]
+    /// Empty means cache is enabled for all paths.
+    #[serde(default, deserialize_with = "deserialize_comma_separated")]
+    pub cache_path_prefixes: Vec<String>,
 }
 
 /// Placeholder for future OIDC authentication configuration.
@@ -145,4 +153,43 @@ impl AppConfig {
 
         builder.build()?.try_deserialize()
     }
+}
+
+/// Accept either a TOML array `["a", "b"]` or a comma-separated env-var
+/// string `"a,b"`.  Blank entries are silently dropped.
+fn deserialize_comma_separated<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string or a sequence of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect())
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut v = Vec::new();
+            while let Some(s) = seq.next_element::<String>()? {
+                let s = s.trim().to_string();
+                if !s.is_empty() {
+                    v.push(s);
+                }
+            }
+            Ok(v)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
 }

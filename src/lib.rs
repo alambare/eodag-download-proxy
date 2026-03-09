@@ -2,7 +2,6 @@ pub mod auth;
 pub mod authz;
 pub mod backend;
 pub mod cache;
-pub mod client_pool;
 pub mod config;
 pub mod eodag;
 pub mod error;

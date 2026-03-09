@@ -8,8 +8,44 @@ use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use eodag_download_proxy::cache::{CacheStore, MockCacheStore};
-use eodag_download_proxy::client_pool::S3ClientPool;
+use eodag_download_proxy::cache::CacheStore;
+use futures::stream::BoxStream;
+
+/// No-op cache mock – always reports a miss and discards writes.
+struct MockCacheStore;
+
+#[async_trait::async_trait]
+impl CacheStore for MockCacheStore {
+    async fn exists(&self, _key: &str) -> Result<bool, eodag_download_proxy::error::AppError> {
+        Ok(false)
+    }
+
+    async fn get_stream(
+        &self,
+        _key: &str,
+    ) -> Result<
+        (
+            BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+            Option<String>,
+            Option<u64>,
+        ),
+        eodag_download_proxy::error::AppError,
+    > {
+        Err(eodag_download_proxy::error::AppError::Internal(
+            "MockCacheStore has no data".to_string(),
+        ))
+    }
+
+    async fn upload(
+        &self,
+        _key: &str,
+        _stream: BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+        _content_length: Option<u64>,
+    ) -> Result<(), eodag_download_proxy::error::AppError> {
+        Ok(())
+    }
+}
+use eodag_download_proxy::backend::s3::S3ClientPool;
 use eodag_download_proxy::config::{AppConfig, PoolConfig};
 use eodag_download_proxy::eodag::{EodagClient, MockEodagClient};
 use eodag_download_proxy::models::EodagResponse;
@@ -259,7 +295,7 @@ async fn test_cache_hit() {
             Ok(true)
         }
 
-        async fn stream(
+        async fn get_stream(
             &self,
             _key: &str,
         ) -> Result<
@@ -277,6 +313,15 @@ async fn test_cache_hit() {
                 Some("application/octet-stream".to_string()),
                 Some(11),
             ))
+        }
+
+        async fn upload(
+            &self,
+            _key: &str,
+            _stream: BoxStream<'static, Result<Bytes, eodag_download_proxy::error::AppError>>,
+            _content_length: Option<u64>,
+        ) -> Result<(), eodag_download_proxy::error::AppError> {
+            Ok(())
         }
     }
 

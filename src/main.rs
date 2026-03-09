@@ -1,6 +1,6 @@
 use eodag_download_proxy::eodag::EodagClient;
-use eodag_download_proxy::cache::S3CacheStore;
-use eodag_download_proxy::client_pool::S3ClientPool;
+use eodag_download_proxy::cache;
+use eodag_download_proxy::backend::s3::S3ClientPool;
 use eodag_download_proxy::config::AppConfig;
 use eodag_download_proxy::eodag::MockEodagClient;
 use eodag_download_proxy::state::AppState;
@@ -28,8 +28,9 @@ async fn main() {
     let eodag_client: Arc<dyn EodagClient + Send + Sync> =
         Arc::new(MockEodagClient::from_mode(&config.mock_mode));
 
-    let cache_store: Option<Arc<S3CacheStore>> =
-        S3CacheStore::build_from_config(&config, s3_pool.clone());
+    let cache_store = cache::build_from_config(&config)
+        .await
+        .expect("cache initialization failed");
 
     let state = AppState {
         config: config.clone(),

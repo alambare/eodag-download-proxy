@@ -19,6 +19,7 @@ eodag_url = "http://localhost:5000"
 # access_key = ""
 # secret_key = ""
 # presign_prefixes = []                                                                          # prefixes for which presigned URLs are returned
+# cache_path_prefixes = []                                                                       # cache only paths starting with these prefixes (empty = cache all)
 
 # ── Optional: Authentication (OIDC) ─────────────────────────────────────
 # [auth]
